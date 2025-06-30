@@ -1,1 +1,199 @@
-run_python.alway.com
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Run_python.alway with stdin</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; height: 100%;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e1e;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      height: 50px;
+      background: #282c34;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      font-weight: bold;
+      font-size: 20px;
+      gap: 12px;
+      user-select: none;
+    }
+    .logo {
+      font-family: monospace;
+      font-size: 28px;
+      color: #61dafb;
+      letter-spacing: 5px;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 20px;
+    }
+    #editor {
+      flex: 1;
+      min-height: 300px;
+    }
+    #controls {
+      background: #20232a;
+      padding: 8px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #input-area {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 400px;
+      flex-grow: 1;
+    }
+    #userInput {
+      background: #121416;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 6px 8px;
+      width: 100%;
+      height: 80px;
+      resize: vertical;
+    }
+    button#runBtn {
+      background: #61dafb;
+      border: none;
+      padding: 10px 20px;
+      font-weight: bold;
+      font-size: 16px;
+      color: #20232a;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      align-self: flex-start;
+    }
+    button#runBtn:hover {
+      background: #21a1f1;
+    }
+    #output {
+      background: #121416;
+      color: #e0e0e0;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 12px 16px;
+      height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border-top: 1px solid #333;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">-X-</div>
+    <div>Run_python.alway</div>
+  </header>
+
+  <main>
+    <div id="editor"></div>
+
+    <div id="controls">
+      <div id="input-area">
+        <label for="userInput">Input (cho input()):</label>
+        <textarea id="userInput" placeholder="Nhập dữ liệu cho input(), mỗi dòng một input nếu cần"></textarea>
+      </div>
+      <button id="runBtn" disabled>Run Python</button>
+    </div>
+
+    <pre id="output" aria-live="polite" aria-atomic="true"></pre>
+  </main>
+
+  <!-- Monaco Editor CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.41.0/min/vs/loader.js"></script>
+  <!-- Pyodide CDN -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+  <script>
+    // Load Monaco Editor
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.41.0/min/vs' }});
+    let editor;
+    require(['vs/editor/editor.main'], function() {
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        value: `# Ví dụ sử dụng input()
+n = int(input())
+print("Bạn vừa nhập:", n)
+`,
+        language: 'python',
+        theme: 'vs-dark',
+        automaticLayout: true,
+        fontSize: 16,
+        minimap: { enabled: false }
+      });
+    });
+
+    let pyodideReady = false;
+    let pyodide;
+
+    async function main() {
+      pyodide = await loadPyodide({
+        indexURL : "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+      });
+      pyodideReady = true;
+      document.getElementById('runBtn').disabled = false;
+    }
+    main();
+
+    document.getElementById('runBtn').addEventListener('click', async () => {
+      if (!pyodideReady) {
+        alert('Python runtime is still loading, please chờ một chút...');
+        return;
+      }
+
+      const outputEl = document.getElementById('output');
+      const inputVal = document.getElementById('userInput').value;
+      const code = editor.getValue();
+
+      outputEl.textContent = 'Running...';
+
+      // Chuẩn bị stdin giả lập
+      const wrappedCode = `
+import sys
+import io
+
+sys.stdin = io.StringIO("""${inputVal.replace(/\\/g, '\\\\').replace(/"""|'''/g, '')}""")
+
+${code}
+`;
+
+      try {
+        // Kết nối stdout, stderr để lấy output
+        let output = '';
+        pyodide.setStdout({
+          batched: (s) => { output += s; }
+        });
+        pyodide.setStderr({
+          batched: (s) => { output += s; }
+        });
+
+        await pyodide.runPythonAsync(wrappedCode);
+
+        outputEl.textContent = output || '[No output]';
+
+      } catch (err) {
+        outputEl.textContent = `Error:\n${err}`;
+      }
+    });
+  </script>
+</body>
+</html>
